@@ -15,11 +15,16 @@ import me.siowu.OplusKeyHook.utils.SPUtils;
 
 public class MainActivity extends AppCompatActivity {
 
-    private Spinner spinnerGesture, spinnerType, spinnerCommon;
+    private RadioGroup radioGroupGesture;
+    private Spinner spinnerType, spinnerCommon;
     private EditText editPackage, editActivity, editUrlScheme, editxiaobuShortcuts, editShell;
     private LinearLayout layoutCommon, layoutCustomActivity, layoutUrlScheme, layoutxiaobuShortcuts, layoutShell;
     private Button btnSave;
     private CheckBox checkboxVibrate, checkboxExecuteWhenScreenOff;
+
+    private static final int GESTURE_SINGLE = 0;
+    private static final int GESTURE_DOUBLE = 1;
+    private static final int GESTURE_LONG   = 2;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
-        spinnerGesture = findViewById(R.id.spinnerGesture); // ⬅ 新增手势选择控件
+        radioGroupGesture = findViewById(R.id.radioGroupGesture);
         spinnerType = findViewById(R.id.spinnerType);
         spinnerCommon = findViewById(R.id.spinnerCommon);
         editPackage = findViewById(R.id.editPackage);
@@ -56,12 +61,9 @@ public class MainActivity extends AppCompatActivity {
         btnSave = findViewById(R.id.btnSave);
 
         // 手势选择
-        ArrayAdapter<String> adapterGesture = new ArrayAdapter<>(
-                this, android.R.layout.simple_spinner_item,
-                new String[]{"短按", "双击", "长按"}
-        );
-        adapterGesture.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spinnerGesture.setAdapter(adapterGesture);
+        radioGroupGesture.setOnCheckedChangeListener((group, checkedId) -> {
+            loadGestureConfig(getGesturePosition());
+        });
 
         // 类型选择
         ArrayAdapter<String> adapterType = new ArrayAdapter<>(
@@ -77,18 +79,6 @@ public class MainActivity extends AppCompatActivity {
         );
         adapterCommon.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinnerCommon.setAdapter(adapterCommon);
-
-        // 当选择不同手势时加载不同配置
-        spinnerGesture.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-                loadGestureConfig(pos);
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {
-            }
-        });
 
         spinnerType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
@@ -109,7 +99,8 @@ public class MainActivity extends AppCompatActivity {
     private void loadGestureConfig(int gesture) {
         String prefix = getPrefix(gesture);
 
-        spinnerType.setSelection(getTypeIndex(SPUtils.getString(prefix + "type", "无")));
+        int typeIndex = getTypeIndex(SPUtils.getString(prefix + "type", "无"));
+        spinnerType.setSelection(typeIndex);
         spinnerCommon.setSelection(SPUtils.getInt(prefix + "common_index", 0));
 
         editPackage.setText(SPUtils.getString(prefix + "package", ""));
@@ -121,12 +112,11 @@ public class MainActivity extends AppCompatActivity {
         checkboxVibrate.setChecked(SPUtils.getBoolean(prefix + "vibrate", true));
         checkboxExecuteWhenScreenOff.setChecked(SPUtils.getBoolean(prefix + "screen_off", true));
 
-        updateLayout(spinnerType.getSelectedItemPosition());
+        updateLayout(typeIndex);
     }
 
     private void saveConfig() {
-        int gesture = spinnerGesture.getSelectedItemPosition();
-        String prefix = getPrefix(gesture);
+        String prefix = getPrefix(getGesturePosition());
 
         SPUtils.putString(prefix + "type", (String) spinnerType.getSelectedItem());
         SPUtils.putInt(prefix + "common_index", spinnerCommon.getSelectedItemPosition());
@@ -153,13 +143,20 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    private int getGesturePosition() {
+        int checkedId = radioGroupGesture.getCheckedRadioButtonId();
+        if (checkedId == R.id.radioDouble) return GESTURE_DOUBLE;
+        if (checkedId == R.id.radioLong)   return GESTURE_LONG;
+        return GESTURE_SINGLE;
+    }
+
     private String getPrefix(int gesture) {
         switch (gesture) {
-            case 0:
+            case GESTURE_SINGLE:
                 return "single_"; // 短按
-            case 1:
+            case GESTURE_DOUBLE:
                 return "double_"; // 双击
-            case 2:
+            case GESTURE_LONG:
                 return "long_";   // 长按
         }
         return "single_";
