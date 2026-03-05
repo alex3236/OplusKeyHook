@@ -26,6 +26,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int GESTURE_DOUBLE = 1;
     private static final int GESTURE_LONG   = 2;
 
+    private int currentGesture = GESTURE_SINGLE;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -44,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         radioGroupGesture = findViewById(R.id.radioGroupGesture);
+        currentGesture = getGesturePosition(); // sync with actual initial radio state
         spinnerType = findViewById(R.id.spinnerType);
         spinnerCommon = findViewById(R.id.spinnerCommon);
         editPackage = findViewById(R.id.editPackage);
@@ -60,9 +63,12 @@ public class MainActivity extends AppCompatActivity {
         checkboxExecuteWhenScreenOff = findViewById(R.id.checkboxExecuteWhenScreenOff);
         btnSave = findViewById(R.id.btnSave);
 
-        // 手势选择
+        // 手势选择：切换前先静默保存当前手势的字段，确保一次 Save 即可保存所有手势
         radioGroupGesture.setOnCheckedChangeListener((group, checkedId) -> {
-            loadGestureConfig(getGesturePosition());
+            saveGestureFields(currentGesture);
+            int newGesture = getGesturePositionFromId(checkedId);
+            currentGesture = newGesture;
+            loadGestureConfig(newGesture);
         });
 
         // 类型选择
@@ -93,7 +99,7 @@ public class MainActivity extends AppCompatActivity {
 
         btnSave.setOnClickListener(v -> saveConfig());
 
-        loadGestureConfig(0); // 默认加载【短按】
+        loadGestureConfig(currentGesture); // 默认加载初始选中的手势
     }
 
     private void loadGestureConfig(int gesture) {
@@ -115,8 +121,8 @@ public class MainActivity extends AppCompatActivity {
         updateLayout(typeIndex);
     }
 
-    private void saveConfig() {
-        String prefix = getPrefix(getGesturePosition());
+    private void saveGestureFields(int gesture) {
+        String prefix = getPrefix(gesture);
 
         SPUtils.putString(prefix + "type", (String) spinnerType.getSelectedItem());
         SPUtils.putInt(prefix + "common_index", spinnerCommon.getSelectedItemPosition());
@@ -128,6 +134,10 @@ public class MainActivity extends AppCompatActivity {
 
         SPUtils.putBoolean(prefix + "vibrate", checkboxVibrate.isChecked());
         SPUtils.putBoolean(prefix + "screen_off", checkboxExecuteWhenScreenOff.isChecked());
+    }
+
+    private void saveConfig() {
+        saveGestureFields(getGesturePosition());
 
         Toast.makeText(this, "已保存（3 秒后生效）", Toast.LENGTH_SHORT).show();
 
@@ -144,7 +154,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private int getGesturePosition() {
-        int checkedId = radioGroupGesture.getCheckedRadioButtonId();
+        return getGesturePositionFromId(radioGroupGesture.getCheckedRadioButtonId());
+    }
+
+    private int getGesturePositionFromId(int checkedId) {
         if (checkedId == R.id.radioDouble) return GESTURE_DOUBLE;
         if (checkedId == R.id.radioLong)   return GESTURE_LONG;
         return GESTURE_SINGLE;
