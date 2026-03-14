@@ -9,6 +9,8 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 import de.robv.android.xposed.XSharedPreferences;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
@@ -19,10 +21,11 @@ import de.robv.android.xposed.XposedHelpers;
 public class KeyHook {
 
     XSharedPreferences sp = null;
-    private long lastDownTime = 0;
-    private long lastUpTime = 0;
-    private int clickCount = 0;
-    private boolean isLongPress = false;
+    private volatile long lastDownTime = 0;
+    private volatile long lastUpTime = 0;
+    private volatile long firstUpTime = 0;
+    private final AtomicInteger clickCount = new AtomicInteger(0);
+    private volatile boolean isLongPress = false;
     private static final long DOUBLE_CLICK_DELAY = 300;
     private static final long LONG_PRESS_TIME = 495;
     private static Context systemContext;
@@ -60,12 +63,14 @@ public class KeyHook {
                                 if (event.getAction() == KeyEvent.ACTION_DOWN && down) {
                                     lastDownTime = now;
                                     isLongPress = false;
+                                    // 捕获本次按下时间，防止后续按下修改 lastDownTime 导致误判
+                                    final long capturedDownTime = now;
                                     // 启动一个判定长按的线程
                                     new Thread(() -> {
                                         try {
                                             Thread.sleep(LONG_PRESS_TIME);
-                                            // 若超过495ms仍未抬起，则判定为长按
-                                            if (lastUpTime < lastDownTime && !isLongPress) {
+                                            // 若超过495ms仍未抬起（lastUpTime 早于本次按下），则判定为长按
+                                            if (lastUpTime < capturedDownTime && !isLongPress) {
                                                 isLongPress = true;
                                                 XposedBridge.log("触发长按事件");
                                                 handleClick("long_", interactive, currentStrategy);
@@ -86,29 +91,27 @@ public class KeyHook {
                                         param.setResult(null);
                                         return;
                                     }
-                                    clickCount++;
+                                    int count = clickCount.incrementAndGet();
 
-                                    // 判断双击
-                                    if (clickCount == 2 && (now - lastDownTime) < DOUBLE_CLICK_DELAY) {
-                                        XposedBridge.log("触发双击事件");
-                                        handleClick("double_", interactive, currentStrategy);
-                                        clickCount = 0;
-                                        param.setResult(null);
-                                        return;
-                                    }
-
-                                    // 如果 250ms 内没有第二次点击，判定为短按
-                                    new Thread(() -> {
-                                        try {
-                                            Thread.sleep(DOUBLE_CLICK_DELAY);
-                                            if (clickCount == 1 && !isLongPress) {
-                                                XposedBridge.log("触发短按事件");
-                                                handleClick("single_", interactive, currentStrategy);
-                                            }
-                                            clickCount = 0;
-                                        } catch (Exception ignored) {
+                                    if (count == 1) {
+                                        // 记录第一次抬起时间，作为双击窗口的起点
+                                        firstUpTime = now;
+                                        // 等待双击窗口，若期间无第二次点击则判定为短按
+                                        scheduleSingleTap(interactive, currentStrategy);
+                                    } else if (count >= 2) {
+                                        // 捕获首次抬起时间，判断第二次点击是否在双击窗口内
+                                        final long capturedFirstUpTime = firstUpTime;
+                                        if ((now - capturedFirstUpTime) <= DOUBLE_CLICK_DELAY) {
+                                            clickCount.set(0);
+                                            XposedBridge.log("触发双击事件");
+                                            handleClick("double_", interactive, currentStrategy);
+                                        } else {
+                                            // 第二次点击超出窗口，作为新一轮单击处理
+                                            clickCount.set(1);
+                                            firstUpTime = now;
+                                            scheduleSingleTap(interactive, currentStrategy);
                                         }
-                                    }).start();
+                                    }
                                     param.setResult(null);
                                 }
                             }
@@ -121,6 +124,21 @@ public class KeyHook {
         }
     }
 
+
+    // 启动单击延迟判定线程：等待双击窗口结束后，若仍只有一次点击则触发短按
+    private void scheduleSingleTap(boolean interactive, Object currentStrategy) {
+        new Thread(() -> {
+            try {
+                Thread.sleep(DOUBLE_CLICK_DELAY);
+                // 使用 CAS 原子地确认并重置计数，避免与双击判定竞争
+                if (!isLongPress && clickCount.compareAndSet(1, 0)) {
+                    XposedBridge.log("触发短按事件");
+                    handleClick("single_", interactive, currentStrategy);
+                }
+            } catch (Exception ignored) {
+            }
+        }).start();
+    }
 
     public void handleClick(String prefix, boolean interactive, Object currentStrategy) {
         sp.reload();

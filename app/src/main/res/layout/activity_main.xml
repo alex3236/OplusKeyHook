@@ -17,10 +17,34 @@
             android:text="选择事件类型"
             android:textSize="16sp" />
 
-        <Spinner
-            android:id="@+id/spinnerGesture"
+        <RadioGroup
+            android:id="@+id/radioGroupGesture"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/radioSingle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:checked="true"
+                android:text="短按" />
+
+            <RadioButton
+                android:id="@+id/radioDouble"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="双击" />
+
+            <RadioButton
+                android:id="@+id/radioLong"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="长按" />
+        </RadioGroup>
 
         <TextView
             android:layout_width="wrap_content"
